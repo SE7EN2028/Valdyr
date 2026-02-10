@@ -1,6 +1,8 @@
 
 # 🏠 Intelligent Property Price Advisory System
 
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Nandann018-ux/Valdyr/main?labpath=notebooks%2Fdata_exploration.ipynb)
+
 ## Overview
 This project is an AI-driven real estate analytics system that predicts property prices using historical housing data and provides structured buying or investment recommendations.
 

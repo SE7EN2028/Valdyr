@@ -10,8 +10,13 @@ st.set_page_config(
 )
 
 # ---------------- LOAD MODEL ---------------- #
-model = joblib.load("house_price_model.pkl")
-model_columns = joblib.load("model_columns.pkl")
+from pathlib import Path
+import joblib
+
+BASE_DIR = Path(__file__).resolve().parent
+
+model = joblib.load(BASE_DIR / "house_price_model.pkl")
+model_columns = joblib.load(BASE_DIR / "model_columns.pkl")
 
 # ---------------- HEADER ---------------- #
 st.markdown(

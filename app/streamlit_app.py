@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import joblib
+from pathlib import Path
 
 # ---------------- PAGE CONFIG ---------------- #
 st.set_page_config(
@@ -10,8 +11,6 @@ st.set_page_config(
 )
 
 # ---------------- LOAD MODEL ---------------- #
-from pathlib import Path
-import joblib
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -60,6 +59,9 @@ input_dict = {
     "hotwaterheating": 1 if hotwaterheating == "Yes" else 0,
     "airconditioning": 1 if airconditioning == "Yes" else 0,
     "prefarea": 1 if prefarea == "Yes" else 0,
+    # one-hot encode furnishingstatus (drop_first=True means 'furnished' is baseline)
+    "furnishingstatus_semi-furnished": 1 if furnishingstatus == "semi-furnished" else 0,
+    "furnishingstatus_unfurnished": 1 if furnishingstatus == "unfurnished" else 0,
 }
 
 input_df = pd.DataFrame([input_dict])

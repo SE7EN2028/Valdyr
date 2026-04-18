@@ -11,6 +11,82 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ---------------- CUSTOM CSS ---------------- #
+st.markdown("""
+<style>
+    /* Global Styles */
+    .stApp {
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Headers */
+    h1, h2, h3 {
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    /* Text */
+    p {
+        color: #475569;
+        font-size: 1.1rem;
+    }
+
+    /* Dataframe */
+    .stDataFrame {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    /* Result Card */
+    .result-card {
+        padding: 2.5rem;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        background-color: #ffffff;
+        text-align: center;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    }
+
+    .result-card h3 {
+        color: #64748b;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 600;
+    }
+
+    .result-card h1 {
+        font-size: 3.5rem;
+        margin: 0;
+        color: #2563eb;
+        font-weight: 700;
+    }
+
+    /* Dividers */
+    hr {
+        border-color: #e2e8f0;
+        margin: 2.5rem 0;
+    }
+    
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {
+        h1, h2, h3 { color: #f8fafc; }
+        p { color: #cbd5e1; }
+        .result-card {
+            background-color: #1e293b;
+            border-color: #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+        .result-card h1 { color: #60a5fa; }
+        .result-card h3 { color: #94a3b8; }
+        hr, .stDataFrame { border-color: #334155; }
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ---------------- LOAD MODEL ---------------- #
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -34,8 +110,8 @@ except Exception as e:
     st.stop()
 
 # ---------------- HEADER ---------------- #
-st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🏡 Valdýr: House Price Prediction</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #888;'>Get an instant estimate for your property value using Machine Learning.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🏡 Valdýr: House Price Prediction</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Get an instant estimate for your property value using Machine Learning.</p>", unsafe_allow_html=True)
 st.divider()
 
 # ---------------- SIDEBAR INPUTS ---------------- #
@@ -93,7 +169,7 @@ with col1:
     st.markdown("### 📊 Your Inputs")
     st.dataframe(
         pd.DataFrame([input_dict]).T.rename(columns={0: "Value"}),
-        use_container_width=True,
+        width='stretch',
         height=400
     )
 
@@ -107,12 +183,11 @@ with col2:
                 prediction = model.predict(input_df)[0]
                 st.success("Analysis Complete!")
                 st.markdown(f"""
-                <div style="padding: 20px; border-radius: 10px; border: 2px solid #4CAF50; text-align: center; background-color: #f9f9f9;">
-                    <h3 style="margin: 0; color: #333;">Estimated Price</h3>
-                    <h1 style="color: #4CAF50; margin: 10px 0;">₹ {int(prediction):,}</h1>
+                <div class="result-card">
+                    <h3>Estimated Price</h3>
+                    <h1>₹ {int(prediction):,}</h1>
                 </div>
                 """, unsafe_allow_html=True)
-                st.balloons()
             except Exception as e:
                 st.error(f"⚠️ Prediction failed: {str(e)}")
                 

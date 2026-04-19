@@ -8,6 +8,7 @@ import pandas as pd
 import joblib
 
 from src.agent.langgraph_flow import run_advisory
+from src.agent.report_pdf import generate_pdf
 
 st.set_page_config(
     page_title="Valdýr - Real Estate Advisory",
@@ -134,10 +135,15 @@ with tab1:
                     st.error(f"Prediction failed: {str(e)}")
 
 with tab2:
-    st.markdown("### 📋 AI Advisory Report")
+    st.markdown("### AI Advisory Report")
     st.write("Generate a detailed advisory report with price analysis, market insights and recommendations.")
 
-    if st.button("Generate Advisory Report 📝", use_container_width=True, type="primary"):
+    if "advisory_result" not in st.session_state:
+        st.session_state.advisory_result = None
+        st.session_state.advisory_pdf = None
+        st.session_state.advisory_property = None
+
+    if st.button("Generate Advisory Report", use_container_width=True, type="primary"):
         with st.spinner("Running AI agent... this may take a moment"):
             try:
                 property_data = {
@@ -156,22 +162,43 @@ with tab2:
                 }
 
                 result = run_advisory(property_data)
+                st.session_state.advisory_result = result
+                st.session_state.advisory_property = property_data
 
-                st.markdown(f"""
-                <div class="result-card">
-                    <h3>Predicted Price</h3>
-                    <h1>₹ {int(result['predicted_price']):,}</h1>
-                </div>
-                """, unsafe_allow_html=True)
-
-                if result["warnings"]:
-                    st.warning(result["warnings"])
-
-                st.markdown("---")
-                st.markdown(result["report"])
+                try:
+                    st.session_state.advisory_pdf = generate_pdf(
+                        result["report"], result["predicted_price"], property_data
+                    )
+                except Exception:
+                    st.session_state.advisory_pdf = None
 
             except Exception as e:
                 st.error(f"Report generation failed: {str(e)}")
+
+    if st.session_state.advisory_result:
+        result = st.session_state.advisory_result
+
+        st.markdown(f"""
+        <div class="result-card">
+            <h3>Predicted Price</h3>
+            <h1>Rs {int(result['predicted_price']):,}</h1>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if result["warnings"]:
+            st.warning(result["warnings"])
+
+        st.markdown("---")
+        st.markdown(result["report"])
+
+        if st.session_state.advisory_pdf:
+            st.download_button(
+                "Download PDF Report",
+                data=st.session_state.advisory_pdf,
+                file_name="valdyr_advisory_report.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
 
 st.divider()
 st.markdown(

@@ -128,7 +128,7 @@ with tab1:
         st.markdown("### 💰 Valuation")
         st.write("Click below to predict the current market price.")
 
-        if st.button("Predict Price 🚀", use_container_width=True, type="primary"):
+        if st.button("Predict Price 🚀", width="stretch", type="primary"):
             with st.spinner("Analyzing..."):
                 try:
                     prediction = model.predict(input_df)[0]
@@ -151,7 +151,7 @@ with tab2:
         st.session_state.advisory_pdf = None
         st.session_state.advisory_property = None
 
-    if st.button("Generate Advisory Report", use_container_width=True, type="primary"):
+    if st.button("Generate Advisory Report", width="stretch", type="primary"):
         with st.spinner("Running AI agent... this may take a moment"):
             try:
                 property_data = {
@@ -205,7 +205,7 @@ with tab2:
                 data=st.session_state.advisory_pdf,
                 file_name="valdyr_advisory_report.pdf",
                 mime="application/pdf",
-                use_container_width=True
+                width="stretch"
             )
 
 st.divider()

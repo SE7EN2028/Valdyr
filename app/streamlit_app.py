@@ -1,85 +1,39 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import streamlit as st
 import pandas as pd
 import joblib
-from pathlib import Path
 
-# ---------------- PAGE CONFIG ---------------- #
+from src.agent.langgraph_flow import run_advisory
+
 st.set_page_config(
-    page_title="Valdýr - House Price Predictor",
+    page_title="Valdýr - Real Estate Advisory",
     page_icon="🏡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ---------------- CUSTOM CSS ---------------- #
 st.markdown("""
 <style>
-    /* Global Styles */
-    .stApp {
-        font-family: 'Inter', sans-serif;
-    }
-
-    /* Headers */
-    h1, h2, h3 {
-        font-family: 'Inter', sans-serif;
-        font-weight: 600;
-        color: #1e293b;
-    }
-
-    /* Text */
-    p {
-        color: #475569;
-        font-size: 1.1rem;
-    }
-
-    /* Dataframe */
-    .stDataFrame {
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    /* Result Card */
+    .stApp { font-family: 'Inter', sans-serif; }
+    h1, h2, h3 { font-family: 'Inter', sans-serif; font-weight: 600; color: #1e293b; }
+    p { color: #475569; font-size: 1.1rem; }
+    .stDataFrame { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
     .result-card {
-        padding: 2.5rem;
-        border-radius: 12px;
-        border: 1px solid #e2e8f0;
-        background-color: #ffffff;
-        text-align: center;
+        padding: 2.5rem; border-radius: 12px; border: 1px solid #e2e8f0;
+        background-color: #ffffff; text-align: center;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
     }
-
-    .result-card h3 {
-        color: #64748b;
-        font-size: 1rem;
-        margin-bottom: 0.5rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-weight: 600;
-    }
-
-    .result-card h1 {
-        font-size: 3.5rem;
-        margin: 0;
-        color: #2563eb;
-        font-weight: 700;
-    }
-
-    /* Dividers */
-    hr {
-        border-color: #e2e8f0;
-        margin: 2.5rem 0;
-    }
-    
-    /* Dark mode support */
+    .result-card h3 { color: #64748b; font-size: 1rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+    .result-card h1 { font-size: 3.5rem; margin: 0; color: #2563eb; font-weight: 700; }
+    hr { border-color: #e2e8f0; margin: 2.5rem 0; }
     @media (prefers-color-scheme: dark) {
         h1, h2, h3 { color: #f8fafc; }
         p { color: #cbd5e1; }
-        .result-card {
-            background-color: #1e293b;
-            border-color: #334155;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-        }
+        .result-card { background-color: #1e293b; border-color: #334155; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); }
         .result-card h1 { color: #60a5fa; }
         .result-card h3 { color: #94a3b8; }
         hr, .stDataFrame { border-color: #334155; }
@@ -87,36 +41,25 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- LOAD MODEL ---------------- #
 BASE_DIR = Path(__file__).resolve().parent
 
 @st.cache_resource(show_spinner="Loading House Price Prediction Model...")
 def load_model():
-    model_path = BASE_DIR / "house_price_model.pkl"
-    columns_path = BASE_DIR / "model_columns.pkl"
-    
-    if not model_path.exists() or not columns_path.exists():
-        raise FileNotFoundError("Model files not found. Please ensure house_price_model.pkl and model_columns.pkl are in the app/ directory.")
-        
-    model = joblib.load(model_path)
-    model_columns = joblib.load(columns_path)
+    model = joblib.load(BASE_DIR / "house_price_model.pkl")
+    model_columns = joblib.load(BASE_DIR / "model_columns.pkl")
     return model, model_columns
 
 try:
     model, model_columns = load_model()
 except Exception as e:
-    st.error(f"❌ Error setting up prediction model: {e}")
-    st.info("💡 Make sure you have trained the model and placed the .pkl files inside the `/app` folder.")
+    st.error(f"Error setting up prediction model: {e}")
     st.stop()
 
-# ---------------- HEADER ---------------- #
-st.markdown("<h1 style='text-align: center;'>🏡 Valdýr: House Price Prediction</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Get an instant estimate for your property value using Machine Learning.</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🏡 Valdýr: Real Estate Advisory</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Get price predictions and AI-powered advisory reports for your property.</p>", unsafe_allow_html=True)
 st.divider()
 
-# ---------------- SIDEBAR INPUTS ---------------- #
 st.sidebar.markdown("## ⚙️ House Features")
-st.sidebar.markdown("Adjust the parameters to see the predicted price.")
 
 area = st.sidebar.slider("📐 Area (sq ft)", 500, 10000, 2000, step=100)
 bedrooms = st.sidebar.number_input("🛏️ Bedrooms", 1, 6, 3)
@@ -139,7 +82,6 @@ furnishingstatus = st.sidebar.selectbox(
     label_visibility="collapsed"
 )
 
-# ---------------- DATAFRAME ---------------- #
 input_dict = {
     "area": area,
     "bedrooms": bedrooms,
@@ -158,42 +100,81 @@ input_dict = {
 
 input_df = pd.DataFrame([input_dict])
 input_df = pd.get_dummies(input_df)
-
-# Essential: align columns with identically to what the model expects
 input_df = input_df.reindex(columns=model_columns, fill_value=0)
 
-# ---------------- MAIN CONTENT ---------------- #
-col1, col2 = st.columns([1, 1])
+tab1, tab2 = st.tabs(["💰 Price Prediction", "📋 Advisory Report"])
 
-with col1:
-    st.markdown("### 📊 Your Inputs")
-    st.dataframe(
-        pd.DataFrame([input_dict]).T.rename(columns={0: "Value"}),
-        width='stretch',
-        height=400
-    )
+with tab1:
+    col1, col2 = st.columns([1, 1])
 
-with col2:
-    st.markdown("### 💰 Valuation")
-    st.write("Click the button below to predict the current market price of the specified house.")
-    
-    if st.button("Predict Real Estate Price 🚀", use_container_width=True, type="primary"):
-        with st.spinner("Analyzing market parameters..."):
+    with col1:
+        st.markdown("### 📊 Your Inputs")
+        st.dataframe(
+            pd.DataFrame([input_dict]).T.rename(columns={0: "Value"}),
+            use_container_width=True,
+            height=400
+        )
+
+    with col2:
+        st.markdown("### 💰 Valuation")
+        st.write("Click below to predict the current market price.")
+
+        if st.button("Predict Price 🚀", use_container_width=True, type="primary"):
+            with st.spinner("Analyzing..."):
+                try:
+                    prediction = model.predict(input_df)[0]
+                    st.success("Done!")
+                    st.markdown(f"""
+                    <div class="result-card">
+                        <h3>Estimated Price</h3>
+                        <h1>₹ {int(prediction):,}</h1>
+                    </div>
+                    """, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Prediction failed: {str(e)}")
+
+with tab2:
+    st.markdown("### 📋 AI Advisory Report")
+    st.write("Generate a detailed advisory report with price analysis, market insights and recommendations.")
+
+    if st.button("Generate Advisory Report 📝", use_container_width=True, type="primary"):
+        with st.spinner("Running AI agent... this may take a moment"):
             try:
-                prediction = model.predict(input_df)[0]
-                st.success("Analysis Complete!")
+                property_data = {
+                    "area": area,
+                    "bedrooms": bedrooms,
+                    "bathrooms": bathrooms,
+                    "stories": stories,
+                    "parking": parking,
+                    "mainroad": 1 if mainroad else 0,
+                    "guestroom": 1 if guestroom else 0,
+                    "basement": 1 if basement else 0,
+                    "hotwaterheating": 1 if hotwaterheating else 0,
+                    "airconditioning": 1 if airconditioning else 0,
+                    "prefarea": 1 if prefarea else 0,
+                    "furnishingstatus": furnishingstatus,
+                }
+
+                result = run_advisory(property_data)
+
                 st.markdown(f"""
                 <div class="result-card">
-                    <h3>Estimated Price</h3>
-                    <h1>₹ {int(prediction):,}</h1>
+                    <h3>Predicted Price</h3>
+                    <h1>₹ {int(result['predicted_price']):,}</h1>
                 </div>
                 """, unsafe_allow_html=True)
+
+                if result["warnings"]:
+                    st.warning(result["warnings"])
+
+                st.markdown("---")
+                st.markdown(result["report"])
+
             except Exception as e:
-                st.error(f"⚠️ Prediction failed: {str(e)}")
-                
-# ---------------- FOOTER ---------------- #
+                st.error(f"Report generation failed: {str(e)}")
+
 st.divider()
 st.markdown(
-    "<p style='text-align: center; color: #888;'>Built with ❤️ for rapid real estate prediction | Streamlit & scikit-learn</p>",
+    "<p style='text-align: center; color: #888;'>Built with ❤️ | Streamlit + scikit-learn + LangGraph + Gemini</p>",
     unsafe_allow_html=True
 )

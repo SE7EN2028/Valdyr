@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import streamlit as st
 import pandas as pd
 import joblib
+import traceback
 
 from src.agent.langgraph_flow import run_advisory
 from src.agent.report_pdf import generate_pdf
@@ -88,6 +89,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ─── Model Loading ────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
 
 @st.cache_resource(show_spinner="Loading prediction model…")
@@ -102,6 +104,7 @@ except Exception as e:
     st.error(f"**Model load failed:** {e}")
     st.stop()
 
+# ─── Header ───────────────────────────────────────────────────────────────────
 st.markdown(
     "<h1 style='text-align:center;'>🏡 Valdýr: Housing Price Prediction & Real Estate Advisor</h1>",
     unsafe_allow_html=True
@@ -112,156 +115,224 @@ st.markdown(
 )
 st.divider()
 
+# ─── Sidebar Inputs ───────────────────────────────────────────────────────────
 st.sidebar.markdown("## ⚙️ Property Features")
 
-area = st.sidebar.slider("📐 Area (sq ft)", 500, 10000, 2000, step=100)
-bedrooms = st.sidebar.number_input("🛏️ Bedrooms", 1, 6, 3)
-bathrooms = st.sidebar.number_input("🛁 Bathrooms", 1, 5, 2)
-stories = st.sidebar.number_input("🏢 Stories", 1, 4, 2)
-parking = st.sidebar.number_input("🚗 Parking (Capacity)", 0, 3, 1)
+area         = st.sidebar.slider("📐 Area (sq ft)", 500, 10000, 2000, step=100)
+bedrooms     = st.sidebar.number_input("🛏️ Bedrooms",  min_value=1, max_value=6,  value=3)
+bathrooms    = st.sidebar.number_input("🛁 Bathrooms", min_value=1, max_value=5,  value=2)
+stories      = st.sidebar.number_input("🏢 Stories",   min_value=1, max_value=4,  value=2)
+parking      = st.sidebar.number_input("🚗 Parking Spots", min_value=0, max_value=3, value=1)
 
 st.sidebar.markdown("### 🌟 Amenities")
-mainroad = st.sidebar.checkbox("🛣️ Near Main Road", value=True)
-guestroom = st.sidebar.checkbox("🛌 Guest Room", value=False)
-basement = st.sidebar.checkbox("🏚️ Basement", value=False)
-hotwaterheating = st.sidebar.checkbox("🔥 Hot Water Heating", value=False)
-airconditioning = st.sidebar.checkbox("❄️ Air Conditioning", value=True)
-prefarea = st.sidebar.checkbox("📍 Preferred Area", value=True)
+mainroad       = st.sidebar.checkbox("🛣️ Near Main Road",      value=True)
+guestroom      = st.sidebar.checkbox("🛌 Guest Room",           value=False)
+basement       = st.sidebar.checkbox("🏚️ Basement",             value=False)
+hotwaterheating= st.sidebar.checkbox("🔥 Hot Water Heating",   value=False)
+airconditioning= st.sidebar.checkbox("❄️ Air Conditioning",     value=True)
+prefarea       = st.sidebar.checkbox("📍 Preferred Area",       value=True)
 
+st.sidebar.markdown("### 🪑 Furnishing Status")
 furnishingstatus = st.sidebar.selectbox(
-    "Select Furnishing",
+    "Furnishing",
     ["furnished", "semi-furnished", "unfurnished"],
     label_visibility="collapsed"
 )
 
-st.sidebar.markdown("### 🤖 AI Model")
+st.sidebar.markdown("### 🤖 AI Engine")
 ai_provider = st.sidebar.selectbox(
-    "Select AI Engine",
+    "AI Engine",
     ["Groq (Llama 3.3)", "Gemini (1.5 Flash)"],
     label_visibility="collapsed"
 )
 provider_map = {"Groq (Llama 3.3)": "groq", "Gemini (1.5 Flash)": "gemini"}
 selected_provider = provider_map[ai_provider]
 
+# ─── Feature Dict & DataFrame ─────────────────────────────────────────────────
+# Build the raw feature dict (same structure used by both prediction tabs)
 input_dict = {
-    "area": area,
-    "bedrooms": bedrooms,
-    "bathrooms": bathrooms,
-    "stories": stories,
-    "parking": parking,
-    "mainroad": 1 if mainroad else 0,
-    "guestroom": 1 if guestroom else 0,
-    "basement": 1 if basement else 0,
-    "hotwaterheating": 1 if hotwaterheating else 0,
-    "airconditioning": 1 if airconditioning else 0,
-    "prefarea": 1 if prefarea else 0,
+    "area":                          area,
+    "bedrooms":                      bedrooms,
+    "bathrooms":                     bathrooms,
+    "stories":                       stories,
+    "parking":                       parking,
+    "mainroad":                      1 if mainroad        else 0,
+    "guestroom":                     1 if guestroom       else 0,
+    "basement":                      1 if basement        else 0,
+    "hotwaterheating":               1 if hotwaterheating else 0,
+    "airconditioning":               1 if airconditioning else 0,
+    "prefarea":                      1 if prefarea        else 0,
     "furnishingstatus_semi-furnished": 1 if furnishingstatus == "semi-furnished" else 0,
-    "furnishingstatus_unfurnished": 1 if furnishingstatus == "unfurnished" else 0,
+    "furnishingstatus_unfurnished":    1 if furnishingstatus == "unfurnished"    else 0,
 }
 
-input_df = pd.DataFrame([input_dict])
-input_df = pd.get_dummies(input_df)
-input_df = input_df.reindex(columns=model_columns, fill_value=0)
+# Align with model feature columns (fill any missing with 0)
+input_df = pd.DataFrame([input_dict]).reindex(columns=model_columns, fill_value=0)
 
+# ─── Input fingerprint: detect when user changes any feature ──────────────────
+# Used to auto-clear stale session_state results
+current_input_key = str(sorted(input_dict.items()))
+
+if st.session_state.get("_last_input_key") != current_input_key:
+    st.session_state["_last_input_key"]    = current_input_key
+    st.session_state["predicted_price"]    = None
+    st.session_state["advisory_result"]    = None
+    st.session_state["advisory_pdf"]       = None
+    st.session_state["advisory_property"]  = None
+
+# ─── Tabs ─────────────────────────────────────────────────────────────────────
 tab1, tab2 = st.tabs(["💰 Price Prediction", "📋 Advisory Report"])
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 1 – Price Prediction
+# ══════════════════════════════════════════════════════════════════════════════
 with tab1:
-    col1, col2 = st.columns([1, 1])
+    col1, col2 = st.columns([1, 1], gap="large")
 
     with col1:
-        st.markdown("### 📊 Your Inputs")
+        st.markdown("### 📊 Property Feature Summary")
+        display_dict = {
+            "Area (sq ft)":     area,
+            "Bedrooms":         bedrooms,
+            "Bathrooms":        bathrooms,
+            "Stories":          stories,
+            "Parking":          parking,
+            "Main Road":        "Yes" if mainroad         else "No",
+            "Guest Room":       "Yes" if guestroom        else "No",
+            "Basement":         "Yes" if basement         else "No",
+            "Hot Water Heat":   "Yes" if hotwaterheating  else "No",
+            "Air Conditioning": "Yes" if airconditioning  else "No",
+            "Preferred Area":   "Yes" if prefarea         else "No",
+            "Furnishing":       furnishingstatus.title(),
+        }
+        display_df = pd.DataFrame(
+            [(k, str(v)) for k, v in display_dict.items()],
+            columns=["Feature", "Value"]
+        )
         st.dataframe(
-            pd.DataFrame([input_dict]).T.rename(columns={0: "Value"}),
+            display_df,
             use_container_width=True,
-            height=400
+            hide_index=True,
+            height=420,
         )
 
     with col2:
-        st.markdown("### 💰 Valuation")
-        st.write("Click below to predict the current market price.")
+        st.markdown("### 💰 Price Estimation")
+        st.write("Adjust the property features using the sidebar, then click **Predict Price** to get the ML model's estimate.")
 
-        if st.button("Predict Price 🚀", width="stretch", type="primary"):
-            with st.spinner("Analyzing..."):
+        if st.button("Predict Price 🚀", use_container_width=True, type="primary", key="btn_predict"):
+            with st.spinner("Running prediction model…"):
                 try:
                     prediction = model.predict(input_df)[0]
-                    st.success("Done!")
-                    st.markdown(f"""
-                    <div class="result-card">
-                        <h3>Estimated Price</h3>
-                        <h1>₹ {int(prediction):,}</h1>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.session_state["predicted_price"] = float(prediction)
                 except Exception as e:
-                    st.error(f"Prediction failed: {str(e)}")
+                    st.error(f"Prediction failed: {e}")
 
+        # Show result from session state (persists across reruns)
+        if st.session_state.get("predicted_price") is not None:
+            price = st.session_state["predicted_price"]
+            st.success("✅ Prediction complete")
+            st.markdown(f"""
+            <div class="result-card">
+                <div class="label">Estimated Market Price</div>
+                <div class="price">₹ {int(price):,}</div>
+                <div class="sub">Based on ML model trained on housing dataset</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("👆 Click **Predict Price** to see the estimated value for this configuration.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 2 – Advisory Report
+# ══════════════════════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown("### AI Advisory Report")
-    st.write("Generate a detailed advisory report with price analysis, market insights and recommendations.")
+    st.markdown("### 🤖 AI-Powered Real Estate Advisory Report")
+    st.write(
+        "Our AI agent (LangGraph + RAG) will analyze your property, predict its price, "
+        "retrieve relevant market knowledge, and generate a structured advisory report."
+    )
 
-    if "advisory_result" not in st.session_state:
-        st.session_state.advisory_result = None
-        st.session_state.advisory_pdf = None
-        st.session_state.advisory_property = None
-
-    if st.button("Generate Advisory Report", width="stretch", type="primary"):
-        with st.spinner("Running AI agent... this may take a moment"):
+    if st.button("Generate Advisory Report 📄", use_container_width=True, type="primary", key="btn_advisory"):
+        with st.spinner("Running AI advisory agent… this may take 15–30 seconds"):
             try:
                 property_data = {
-                    "area": area,
-                    "bedrooms": bedrooms,
-                    "bathrooms": bathrooms,
-                    "stories": stories,
-                    "parking": parking,
-                    "mainroad": 1 if mainroad else 0,
-                    "guestroom": 1 if guestroom else 0,
-                    "basement": 1 if basement else 0,
-                    "hotwaterheating": 1 if hotwaterheating else 0,
-                    "airconditioning": 1 if airconditioning else 0,
-                    "prefarea": 1 if prefarea else 0,
+                    "area":            area,
+                    "bedrooms":        bedrooms,
+                    "bathrooms":       bathrooms,
+                    "stories":         stories,
+                    "parking":         parking,
+                    "mainroad":        1 if mainroad         else 0,
+                    "guestroom":       1 if guestroom        else 0,
+                    "basement":        1 if basement         else 0,
+                    "hotwaterheating": 1 if hotwaterheating  else 0,
+                    "airconditioning": 1 if airconditioning  else 0,
+                    "prefarea":        1 if prefarea         else 0,
                     "furnishingstatus": furnishingstatus,
                 }
 
                 result = run_advisory(property_data, provider=selected_provider)
-                st.session_state.advisory_result = result
-                st.session_state.advisory_property = property_data
+                st.session_state["advisory_result"]   = result
+                st.session_state["advisory_property"] = property_data
 
+                # Generate PDF (non-blocking – skip if it fails)
                 try:
-                    st.session_state.advisory_pdf = generate_pdf(
+                    st.session_state["advisory_pdf"] = generate_pdf(
                         result["report"], result["predicted_price"], property_data
                     )
-                except Exception:
-                    st.session_state.advisory_pdf = None
+                except Exception as pdf_err:
+                    st.session_state["advisory_pdf"] = None
+                    st.warning(f"PDF generation skipped: {pdf_err}")
+
+                st.success("✅ Advisory report generated successfully!")
 
             except Exception as e:
-                st.error(f"Report generation failed: {str(e)}")
+                st.error(f"**Report generation failed:** {e}")
+                with st.expander("🔍 Error details (for debugging)"):
+                    st.code(traceback.format_exc())
 
-    if st.session_state.advisory_result:
-        result = st.session_state.advisory_result
-
+    # ── Display saved advisory result ─────────────────────────────────────────
+    result = st.session_state.get("advisory_result")
+    if result:
+        predicted = result.get("predicted_price", 0)
         st.markdown(f"""
         <div class="result-card">
-            <h3>Predicted Price</h3>
-            <h1>Rs {int(result['predicted_price']):,}</h1>
+            <div class="label">AI-Predicted Property Price</div>
+            <div class="price">₹ {int(predicted):,}</div>
+            <div class="sub">Model estimate used for advisory analysis</div>
         </div>
         """, unsafe_allow_html=True)
 
-        if result["warnings"]:
-            st.warning(result["warnings"])
+        if result.get("warnings"):
+            st.warning(f"⚠️ Data Warnings\n\n{result['warnings']}")
 
         st.markdown("---")
-        st.markdown(result["report"])
+        st.markdown("#### 📑 Advisory Report")
 
-        if st.session_state.advisory_pdf:
+        # Render the report nicely
+        st.markdown('<div class="report-body">', unsafe_allow_html=True)
+        st.markdown(result["report"])
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # PDF download
+        pdf_bytes = st.session_state.get("advisory_pdf")
+        if pdf_bytes:
+            st.markdown("---")
             st.download_button(
-                "Download PDF Report",
-                data=st.session_state.advisory_pdf,
+                label="⬇️ Download PDF Report",
+                data=pdf_bytes,
                 file_name="valdyr_advisory_report.pdf",
                 mime="application/pdf",
-                width="stretch"
+                use_container_width=True,
             )
+    else:
+        st.info("👆 Click **Generate Advisory Report** to run the full AI analysis pipeline.")
 
+# ─── Footer ───────────────────────────────────────────────────────────────────
 st.divider()
 st.markdown(
-    "<p style='text-align: center; color: #888;'>Built with ❤️ | Streamlit + scikit-learn + LangGraph</p>",
+    "<p style='text-align:center; color:#94a3b8; font-size:0.85rem;'>"
+    "🏡 Valdýr &nbsp;|&nbsp; ML Price Prediction · LangGraph Agent · RAG Knowledge Base<br>"
+    "Built with Streamlit · scikit-learn · LangGraph · FAISS · Groq / Gemini"
+    "</p>",
     unsafe_allow_html=True
 )

@@ -29,6 +29,7 @@ class AgentState(TypedDict):
     predicted_price: float
     market_context: str
     report: str
+    provider: str
 
 
 def validate_input(state: AgentState):
@@ -88,7 +89,8 @@ def retrieve_context(state: AgentState):
 
 def generate_report(state: AgentState):
     data = state["input_data"]
-    llm = get_llm()
+    provider = state.get("provider", "groq")
+    llm = get_llm(provider=provider)
 
     prompt = REPORT_PROMPT.format(
         area=data["area"],
@@ -134,9 +136,9 @@ def build_graph():
     return graph.compile()
 
 
-def run_advisory(property_data: dict) -> dict:
+def run_advisory(property_data: dict, provider="groq") -> dict:
     app = build_graph()
-    result = app.invoke({"input_data": property_data})
+    result = app.invoke({"input_data": property_data, "provider": provider})
     return {
         "predicted_price": result["predicted_price"],
         "warnings": result["warnings"],
